@@ -21,7 +21,30 @@ type ParallelResponse = {
   }[];
 };
 
-// All Parallel-specific code lives in this function.
+type Citation = {
+  type: string;
+  title: string;
+  url: string;
+  start_index: number;
+  end_index: number;
+};
+
+type BriefingPart = { text: string; citations: Citation[] };
+type Briefing = {
+  parts: BriefingPart[];
+  incomplete: boolean;
+  error?: { source: "parallel"; message: string; status?: number };
+};
+
+type ResponsesPayload = {
+  status?: string;
+  output?: {
+    type: string;
+    content?: { type: string; text?: string; annotations?: Citation[] }[];
+  }[];
+};
+
+// Search and Responses are isolated in these two server-only functions.
 async function searchParallel(
   company: string,
   topic: "overview" | "developments",
@@ -113,6 +136,116 @@ async function searchParallel(
   }
 }
 
+async function generateBriefing(company: string, apiKey: string): Promise<Briefing> {
+  let response: Response;
+  try {
+    response = await fetch("https://api.parallel.ai/v1/responses", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + apiKey,
+      },
+      body: JSON.stringify({
+        model: "parallel",
+        reasoning: { effort: "medium" },
+        input: "Prepare a concise meeting briefing about " + JSON.stringify(company) +
+          " as of " + new Date().toISOString().slice(0, 10) +
+          ". Keep it under 250 words. Use exactly these three plain-text section headings: " +
+          "What the company does; Recent developments; Conversation starters. " +
+          "Under the first heading, write 2–3 sentences about the business. " +
+          "Under the second, give three meaningful developments from the past 12 months with dates. " +
+          "Under the third, give two specific questions someone could ask in a meeting. " +
+          "Research current sources and cite factual claims. Prefer official announcements and reputable reporting. " +
+          "If facts or recent developments cannot be verified, say so instead of inventing them. " +
+          "Use plain text with numbered lists, without Markdown links or formatting.",
+      }),
+      signal: AbortSignal.timeout(60_000),
+      cache: "no-store",
+    });
+  } catch (error) {
+    return {
+      parts: [],
+      incomplete: true,
+      error: {
+        source: "parallel",
+        message: error instanceof Error && error.name === "TimeoutError"
+          ? "Parallel Responses did not finish within 60 seconds."
+          : "Our server could not reach Parallel Responses.",
+      },
+    };
+  }
+
+  if (!response.ok) {
+    const messages: Record<number, string> = {
+      401: "Parallel Responses rejected the API key.",
+      403: "This API key does not have access to Parallel Responses.",
+      402: "Your Parallel account needs available credits for Responses.",
+      429: "Parallel Responses reached its rate limit. Wait a moment and retry.",
+    };
+    return {
+      parts: [],
+      incomplete: true,
+      error: {
+        source: "parallel",
+        message: messages[response.status] || "Parallel Responses could not generate a briefing.",
+        status: response.status,
+      },
+    };
+  }
+
+  try {
+    const data: ResponsesPayload = await response.json();
+    if (!Array.isArray(data.output)) throw new Error("Missing output");
+    const parts: BriefingPart[] = [];
+    let incomplete = data.status !== "completed";
+
+    for (const item of data.output) {
+      if (item.type !== "message" || !Array.isArray(item.content)) continue;
+      for (const part of item.content) {
+        if (part.type !== "output_text" || typeof part.text !== "string" || !part.text.trim()) continue;
+        const text = part.text;
+        const citations: Citation[] = [];
+
+        for (const annotation of part.annotations || []) {
+          if (annotation.type !== "url_citation") continue;
+          try {
+            const url = new URL(annotation.url);
+            if (!["http:", "https:"].includes(url.protocol) ||
+                !Number.isInteger(annotation.start_index) ||
+                !Number.isInteger(annotation.end_index) ||
+                annotation.start_index < 0 ||
+                annotation.end_index < annotation.start_index ||
+                annotation.end_index > text.length) {
+              throw new Error("Invalid citation");
+            }
+            citations.push({
+              type: "url_citation",
+              title: typeof annotation.title === "string" ? annotation.title : annotation.url,
+              url: annotation.url,
+              start_index: annotation.start_index,
+              end_index: annotation.end_index,
+            });
+          } catch {
+            incomplete = true;
+          }
+        }
+
+        citations.sort((left, right) => left.end_index - right.end_index);
+        parts.push({ text, citations });
+      }
+    }
+
+    if (!parts.length) throw new Error("No briefing text");
+    return { parts, incomplete };
+  } catch {
+    return {
+      parts: [],
+      incomplete: true,
+      error: { source: "parallel", message: "Parallel Responses returned no readable briefing. Search results may still be available below." },
+    };
+  }
+}
+
 export async function POST(request: Request) {
   let company: string;
   try {
@@ -141,16 +274,17 @@ export async function POST(request: Request) {
   }
 
   try {
-    const [overview, developments] = await Promise.all([
+    const [overview, developments, briefing] = await Promise.all([
       searchParallel(company, "overview", apiKey),
       searchParallel(company, "developments", apiKey),
+      generateBriefing(company, apiKey),
     ]);
 
-    if (overview.error && developments.error) {
-      return NextResponse.json({ error: overview.error }, { status: 502 });
+    if (overview.error && developments.error && briefing.error) {
+      return NextResponse.json({ error: briefing.error }, { status: 502 });
     }
 
-    return NextResponse.json({ research: { company, overview, developments } });
+    return NextResponse.json({ research: { company, overview, developments, briefing } });
   } catch {
     return NextResponse.json(
       { error: { source: "server", message: "An unexpected error occurred in the research route." } },

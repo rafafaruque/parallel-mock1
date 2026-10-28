@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 
 type ResearchError = {
   source: "frontend" | "server" | "parallel";
@@ -22,6 +22,24 @@ type Research = {
   company: string;
   overview: SearchSection;
   developments: SearchSection;
+  briefing: Briefing;
+};
+
+type BriefingPart = {
+  text: string;
+  citations: {
+    type: string;
+    title: string;
+    url: string;
+    start_index: number;
+    end_index: number;
+  }[];
+};
+
+type Briefing = {
+  parts: BriefingPart[];
+  incomplete: boolean;
+  error?: ResearchError;
 };
 
 type ApiResponse = { research?: Research; error?: ResearchError };
@@ -32,6 +50,67 @@ function ErrorMessage({ error }: { error: ResearchError }) {
       <strong>{error.source} error{error.status ? " · HTTP " + error.status : ""}</strong>
       <p>{error.message}</p>
     </div>
+  );
+}
+
+function BriefingText({ part }: { part: BriefingPart }) {
+  const content: ReactNode[] = [];
+  let cursor = 0;
+
+  // Keep the API text unchanged; add links at the supplied citation positions.
+  for (const [index, citation] of part.citations.entries()) {
+    content.push(part.text.slice(cursor, citation.end_index));
+    content.push(
+      <a
+        className="inline-citation"
+        href={citation.url}
+        key={index}
+        title={citation.title}
+        aria-label={"Source " + (index + 1) + ": " + citation.title}
+        target="_blank"
+        rel="noopener noreferrer"
+      >[{index + 1}]</a>,
+    );
+    cursor = citation.end_index;
+  }
+  content.push(part.text.slice(cursor));
+
+  return <div className="briefing-text">{content}</div>;
+}
+
+function MeetingBriefing({ briefing }: { briefing: Briefing }) {
+  const hasCitations = briefing.parts.some((part) => part.citations.length > 0);
+  return (
+    <section className="meeting-briefing" aria-label="Company meeting briefing">
+      <p className="eyebrow">YOUR MEETING BRIEFING</p>
+      <h3>The essentials, before you meet</h3>
+      {briefing.error ? <ErrorMessage error={briefing.error} /> : (
+        <>
+          {briefing.incomplete ? (
+            <p className="briefing-notice" role="status">Parallel returned a partial briefing. Some content or citations may be missing.</p>
+          ) : null}
+          {!briefing.parts.length ? <p>No briefing text was returned. Browse the search results below.</p> : null}
+          {!hasCitations && briefing.parts.length > 0 ? (
+            <p className="briefing-notice" role="status">No source citations were returned for this briefing. Check factual claims against the search sources below.</p>
+          ) : null}
+          {briefing.parts.map((part, index) => (
+            <div key={index}>
+              <BriefingText part={part} />
+              {part.citations.length > 0 ? (
+                <details className="briefing-sources">
+                  <summary>Briefing sources{briefing.parts.length > 1 ? " · part " + (index + 1) : ""}</summary>
+                  <ol>
+                    {part.citations.map((citation, citationIndex) => (
+                      <li key={citationIndex}><a href={citation.url} target="_blank" rel="noopener noreferrer">{citation.title}</a></li>
+                    ))}
+                  </ol>
+                </details>
+              ) : null}
+            </div>
+          ))}
+        </>
+      )}
+    </section>
   );
 }
 
@@ -50,7 +129,13 @@ function ResultsSection({ title, section }: { title: string; section: SearchSect
             <span>{source.publishedAt || "Date not provided"}</span>
           </div>
           <h4><a href={source.url} target="_blank" rel="noopener noreferrer">{source.title} ↗</a></h4>
-          <p>{source.excerpt || "No excerpt was returned. Open the source to read more."}</p>
+          <p>{source.excerpt ? source.excerpt.slice(0, 180) + (source.excerpt.length > 180 ? "…" : "") : "No excerpt was returned. Open the source to read more."}</p>
+          {source.excerpt.length > 180 ? (
+            <details className="full-excerpt">
+              <summary>Read full excerpt</summary>
+              <p>{source.excerpt}</p>
+            </details>
+          ) : null}
         </article>
       ))}
     </section>
@@ -81,7 +166,7 @@ export default function Home() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ company: name }),
-        signal: AbortSignal.timeout(25_000),
+        signal: AbortSignal.timeout(65_000),
       });
 
       let body: ApiResponse;
@@ -101,7 +186,7 @@ export default function Home() {
       setError({
         source: "frontend",
         message: error instanceof Error && error.name === "TimeoutError"
-          ? "The browser stopped waiting after 25 seconds. Please retry."
+          ? "The browser stopped waiting after 65 seconds. Please retry."
           : "The browser could not reach the research server. Check your connection and retry.",
       });
     } finally {
@@ -139,7 +224,7 @@ export default function Home() {
             {loading ? "Researching…" : "Research company"}
           </button>
         </div>
-        <p>Powered by Parallel Search · Usually takes a few seconds</p>
+        <p>Powered by Parallel Search + Responses · Briefings can take up to a minute</p>
       </form>
 
       {error ? <ErrorMessage error={error} /> : null}
@@ -147,7 +232,7 @@ export default function Home() {
       {loading ? (
         <div className="status-panel" role="status">
           <h2>Researching {company.trim()}…</h2>
-          <p>Finding company information and recent news. This can take up to 20 seconds.</p>
+          <p>Finding sources and writing your meeting briefing. This can take up to a minute.</p>
         </div>
       ) : null}
 
@@ -162,8 +247,10 @@ export default function Home() {
         <section className="research">
           <div className="research-heading">
             <h2>{research.company}</h2>
-            <p>Source excerpts · Recent news searches cover the past 12 months</p>
+            <p>A concise briefing and original sources · Recent research covers the past 12 months</p>
           </div>
+          <MeetingBriefing briefing={research.briefing} />
+          <h3 className="search-results-heading">Explore the search results</h3>
           <div className="results-grid">
             <ResultsSection title="What they do" section={research.overview} />
             <ResultsSection title="Recent developments" section={research.developments} />

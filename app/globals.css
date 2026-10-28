@@ -71,6 +71,19 @@ button:disabled { opacity: .55; cursor: not-allowed; }
 .research-heading { margin-bottom: 23px; }
 .research-heading h2 { margin: 0 0 8px; font-size: 28px; font-weight: 600; letter-spacing: -.7px; overflow-wrap: anywhere; }
 .research-heading p { color: var(--muted); font-size: 12px; margin: 0; line-height: 1.5; }
+.meeting-briefing { padding: 27px; margin-bottom: 30px; border: 1px solid #bdd0c2; border-top: 3px solid var(--green); border-radius: 8px; background: white; }
+.meeting-briefing > .eyebrow { margin: 0 0 9px; }
+.meeting-briefing > h3 { font-size: 22px; font-weight: 600; letter-spacing: -.5px; margin: 0 0 22px; }
+.briefing-text { white-space: pre-wrap; font-size: 14px; line-height: 1.8; color: #344f41; overflow-wrap: anywhere; }
+.inline-citation { margin: 0 2px; font-size: 10px; vertical-align: super; font-weight: 650; color: var(--green); text-decoration: underline; text-underline-offset: 2px; }
+.inline-citation:focus-visible { outline: 2px solid #89ac94; outline-offset: 2px; }
+.briefing-notice { padding: 11px 13px; border: 1px solid #e3d4ad; border-radius: 5px; background: #fffaf0; color: #786039; font-size: 12px; line-height: 1.6; margin: 0 0 17px; }
+.briefing-sources { margin-top: 21px; padding-top: 15px; border-top: 1px solid var(--line); font-size: 12px; }
+.briefing-sources ol { padding-left: 22px; line-height: 1.7; color: var(--muted); }
+.briefing-sources li + li { margin-top: 6px; }
+.briefing-sources a { text-underline-offset: 3px; overflow-wrap: anywhere; }
+summary { cursor: pointer; color: var(--green); font-size: 12px; font-weight: 550; }
+.search-results-heading { font-size: 18px; font-weight: 550; margin: 0 0 22px; }
 .results-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; }
 .results-section h3 { font-size: 15px; font-weight: 600; margin: 0 0 14px; padding-bottom: 11px; border-bottom: 1px solid var(--line); }
 
@@ -87,6 +100,8 @@ button:disabled { opacity: .55; cursor: not-allowed; }
 .source-card a { text-decoration-thickness: 1px; text-underline-offset: 3px; text-decoration-color: #c1d1c6; }
 .source-card a:hover { color: var(--green); text-decoration-color: var(--green); }
 .source-card > p { font-size: 12px; line-height: 1.7; color: var(--muted); white-space: pre-line; overflow-wrap: anywhere; margin: 0; }
+.full-excerpt { margin-top: 12px; }
+.full-excerpt p { white-space: pre-line; overflow-wrap: anywhere; font-size: 12px; line-height: 1.7; color: var(--muted); margin: 10px 0 0; }
 .empty-section { font-size: 13px; line-height: 1.7; color: var(--muted); }
 
 .error {
@@ -109,6 +124,7 @@ footer { margin: 38px 0 0; padding: 21px 0 28px; border-top: 1px solid var(--lin
   .intro { padding-top: 37px; }
   h1 { letter-spacing: -1.1px; }
   .search-form { padding: 18px; }
+  .meeting-briefing { padding: 20px; }
   .search-controls { flex-direction: column; }
   .results-grid { grid-template-columns: 1fr; }
 }
